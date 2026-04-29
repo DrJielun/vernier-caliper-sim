@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vernier Caliper - Interactive Quiz</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            display: flex; flex-direction: column; align-items: center;
+            background-color: #1a1a1a; color: white; padding-top: 20px;
+        }
+        .container {
+            background: #e9ecef; padding: 30px; border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.7); text-align: center; color: #222;
+            width: 940px;
+        }
+        #svg-canvas {
+            background-color: #fff; border: 1px solid #999;
+            margin-bottom: 20px; border-radius: 4px;
+        }
+        .readout-box {
+            font-size: 42px; font-weight: bold; color: #fff;
+            background: #212529; padding: 10px 50px; border-radius: 8px;
+            display: inline-block; margin-bottom: 20px; min-width: 200px;
+            font-family: 'Courier New', monospace; cursor: pointer;
+            border: 3px solid #6c757d;
+        }
+        .hidden-readout { background: #adb5bd; color: #adb5bd; border-color: #adb5bd; }
+        
+        /* Quiz Section Styles */
+        .quiz-panel {
+            background: #dee2e6; padding: 20px; border-radius: 10px;
+            margin-top: 15px; display: flex; flex-direction: column; align-items: center; gap: 10px;
+        }
+        .input-group { display: flex; gap: 10px; align-items: center; }
+        #user-answer {
+            padding: 10px; font-size: 18px; border-radius: 5px; border: 2px solid #ced4da;
+            width: 100px; text-align: center; font-weight: bold;
+        }
+        #feedback { font-weight: bold; font-size: 18px; margin-top: 5px; min-height: 24px; }
+        .correct { color: #198754; }
+        .wrong { color: #dc3545; }
+
+        .controls {
+            display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;
+            background: #ced4da; padding: 20px; border-radius: 10px; margin-bottom: 10px;
+        }
+        .slider-wrap { grid-column: span 3; margin-bottom: 10px; }
+        input[type="range"] { width: 100%; cursor: ew-resize; }
+        button {
+            padding: 12px; cursor: pointer; font-weight: bold;
+            border-radius: 6px; border: none; transition: 0.2s;
+            text-transform: uppercase; font-size: 11px;
+        }
+        .btn-blue { background: #0d6efd; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-hint { background: #ffc107; color: #000; }
+        .label { font-size: 11px; font-weight: bold; color: #495057; text-transform: uppercase; margin-bottom: 5px; display: block; }
+        .hint-active { stroke: #dc3545 !important; stroke-width: 3 !important; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Vernier Caliper Interactive Quiz</h2>
+    
+    <div class="readout-box" id="display" onclick="reveal()">0.00 mm</div>
+
+    <svg id="svg-canvas" width="900" height="240" viewBox="0 0 900 240">
+        <rect x="0" y="60" width="900" height="80" fill="#ced4da" stroke="#495057" />
+        <path d="M 100 140 L 100 230 L 60 230 L 60 60 L 100 60" fill="#ced4da" stroke="#495057" />
+        <g id="main-scale-marks"></g>
+        <g id="slider-group">
+            <path d="M 0 140 L 0 230 L 50 230 L 50 210 L 310 210 L 310 140 Z" fill="#adb5bd" stroke="#495057" stroke-width="1" />
+            <g id="vernier-scale-marks"></g>
+        </g>
+    </svg>
+
+    <div class="controls">
+        <div class="slider-wrap">
+            <span class="label">Adjustment Slide</span>
+            <input type="range" id="caliper-slider" min="0" max="10000" value="0" step="2">
+        </div>
+        <button class="btn-blue" onclick="randomChallenge()">Random Challenge</button>
+        <button class="btn-secondary" onclick="toggleReadout()">Hide/Show Reading</button>
+        <button class="btn-hint" id="hint-btn" onclick="toggleHint()">Toggle Alignment Hint</button>
+    </div>
+
+    <div class="quiz-panel">
+        <span class="label">Practice Mode</span>
+        <div class="input-group">
+            <input type="number" id="user-answer" step="0.02" placeholder="0.00">
+            <span>mm</span>
+            <button class="btn-blue" onclick="checkAnswer()">Submit Answer</button>
+        </div>
+        <div id="feedback"></div>
+    </div>
+</div>
+
+<script>
+    const slider = document.getElementById('caliper-slider');
+    const display = document.getElementById('display');
+    const sliderGroup = document.getElementById('slider-group');
+    const mainScale = document.getElementById('main-scale-marks');
+    const vernierScale = document.getElementById('vernier-scale-marks');
+    const feedback = document.getElementById('feedback');
+    const userInput = document.getElementById('user-answer');
+    
+    const PX_PER_MM = 6; 
+    const OFFSET_X = 100; 
+    let isHidden = false;
+    let showHint = false;
+
+    for (let i = 0; i <= 130; i++) {
+        const x = i * PX_PER_MM + OFFSET_X;
+        let h = 15;
+        if (i % 10 === 0) {
+            h = 30;
+            mainScale.innerHTML += `<text x="${x}" y="85" font-size="14" font-weight="bold" text-anchor="middle">${i/10}</text>`;
+        } else if (i % 5 === 0) h = 22;
+        mainScale.innerHTML += `<line x1="${x}" y1="140" x2="${x}" y2="${140-h}" stroke="black" />`;
+    }
+
+    const VERNIER_DIV_WIDTH = (49 / 50) * PX_PER_MM;
+    for (let i = 0; i <= 50; i++) {
+        const x = i * VERNIER_DIV_WIDTH;
+        let h = 15;
+        if (i % 5 === 0) {
+            h = 24;
+            vernierScale.innerHTML += `<text x="${x}" y="${140+h+15}" font-size="11" font-weight="bold" text-anchor="middle">${i===0?'0':(i/5)}</text>`;
+        }
+        vernierScale.innerHTML += `<line id="v-mark-${i}" x1="${x}" y1="140" x2="${x}" y2="${140+h}" stroke="black" stroke-width="1.2"/>`;
+    }
+
+    function update() {
+        const val = parseFloat(slider.value) / 100;
+        display.innerText = val.toFixed(2) + " mm";
+        const xPos = OFFSET_X + (val * PX_PER_MM);
+        sliderGroup.setAttribute('transform', `translate(${xPos}, 0)`);
+
+        for(let i=0; i<=50; i++) {
+            document.getElementById(`v-mark-${i}`).classList.remove('hint-active');
+        }
+        if(showHint) {
+            const index = Math.round((val % 1.0).toFixed(2) / 0.02);
+            const line = document.getElementById(`v-mark-${index}`);
+            if(line) line.classList.add('hint-active');
+        }
+    }
+
+    function checkAnswer() {
+        const val = (parseFloat(slider.value) / 100).toFixed(2);
+        const userVal = parseFloat(userInput.value).toFixed(2);
+
+        if (userVal === val) {
+            feedback.innerText = "Correct! Well done.";
+            feedback.className = "correct";
+            reveal(); // Show the answer on correct guess
+        } else {
+            feedback.innerText = "Wrong answer. Try again!";
+            feedback.className = "wrong";
+        }
+    }
+
+    function toggleHint() { showHint = !showHint; update(); }
+    function toggleReadout() { isHidden = !isHidden; display.classList.toggle('hidden-readout', isHidden); }
+    function reveal() { isHidden = false; display.classList.remove('hidden-readout'); }
+    
+    function randomChallenge() {
+        slider.value = Math.floor(Math.random() * 4000) * 2;
+        isHidden = true;
+        display.classList.add('hidden-readout');
+        showHint = false;
+        feedback.innerText = "";
+        userInput.value = "";
+        update();
+    }
+
+    slider.addEventListener('input', update);
+    update();
+</script>
+
+</body>
+</html>

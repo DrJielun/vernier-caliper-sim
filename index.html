@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vernier Caliper - Interactive Quiz</title>
+    <title>ITE CE ME Vernier Caliper - Interactive Quiz</title>
     <style>
         body {
             font-family: 'Segoe UI', sans-serif;
@@ -28,7 +28,19 @@
         }
         .hidden-readout { background: #adb5bd; color: #adb5bd; border-color: #adb5bd; }
         
-        /* Quiz Section Styles */
+        /* Streak Counter Styling */
+        .score-counter {
+            margin-bottom: 15px;
+            font-weight: bold;
+            font-size: 18px;
+            color: #0d6efd;
+            background: #cfe2ff;
+            display: inline-block;
+            padding: 5px 25px;
+            border-radius: 20px;
+            border: 1px solid #0d6efd;
+        }
+
         .quiz-panel {
             background: #dee2e6; padding: 20px; border-radius: 10px;
             margin-top: 15px; display: flex; flex-direction: column; align-items: center; gap: 10px;
@@ -41,6 +53,7 @@
         #feedback { font-weight: bold; font-size: 18px; margin-top: 5px; min-height: 24px; }
         .correct { color: #198754; }
         .wrong { color: #dc3545; }
+        .reveal-warning { color: #fd7e14; }
 
         .controls {
             display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;
@@ -64,8 +77,11 @@
 
 <div class="container">
     <h2>ITE CE ME Vernier Caliper Interactive Quiz</h2>
+
+    <div class="score-counter">Current Streak: <span id="streak-count">0</span></div>
+    <br>
     
-    <div class="readout-box" id="display" onclick="reveal()">0.00 mm</div>
+    <div class="readout-box" id="display" onclick="toggleReadout()">0.00 mm</div>
 
     <svg id="svg-canvas" width="900" height="240" viewBox="0 0 900 240">
         <rect x="0" y="60" width="900" height="80" fill="#ced4da" stroke="#495057" />
@@ -106,12 +122,16 @@
     const vernierScale = document.getElementById('vernier-scale-marks');
     const feedback = document.getElementById('feedback');
     const userInput = document.getElementById('user-answer');
+    const streakDisplay = document.getElementById('streak-count');
     
     const PX_PER_MM = 6; 
     const OFFSET_X = 100; 
     let isHidden = false;
     let showHint = false;
+    let streak = 0;
+    let solved = true; // State management for streak logic
 
+    // Build Main Scale
     for (let i = 0; i <= 130; i++) {
         const x = i * PX_PER_MM + OFFSET_X;
         let h = 15;
@@ -122,6 +142,7 @@
         mainScale.innerHTML += `<line x1="${x}" y1="140" x2="${x}" y2="${140-h}" stroke="black" />`;
     }
 
+    // Build Vernier Scale (Resolution 0.02)
     const VERNIER_DIV_WIDTH = (49 / 50) * PX_PER_MM;
     for (let i = 0; i <= 50; i++) {
         const x = i * VERNIER_DIV_WIDTH;
@@ -154,24 +175,46 @@
         const userVal = parseFloat(userInput.value).toFixed(2);
 
         if (userVal === val) {
+            if (!solved) {
+                streak++;
+                solved = true;
+            }
             feedback.innerText = "Correct! Well done.";
             feedback.className = "correct";
-            reveal(); // Show the answer on correct guess
+            reveal(); 
         } else {
+            streak = 0;
             feedback.innerText = "Wrong answer. Try again!";
             feedback.className = "wrong";
         }
+        streakDisplay.innerText = streak;
     }
 
     function toggleHint() { showHint = !showHint; update(); }
-    function toggleReadout() { isHidden = !isHidden; display.classList.toggle('hidden-readout', isHidden); }
-    function reveal() { isHidden = false; display.classList.remove('hidden-readout'); }
+
+    function toggleReadout() { 
+        // Streak resets if user revealing it manually before solving
+        if (display.classList.contains('hidden-readout') && !solved) {
+            streak = 0;
+            streakDisplay.innerText = streak;
+            feedback.innerText = "Streak reset: Answer revealed!";
+            feedback.className = "reveal-warning";
+        }
+        isHidden = !isHidden; 
+        display.classList.toggle('hidden-readout', isHidden); 
+    }
+
+    function reveal() { 
+        isHidden = false; 
+        display.classList.remove('hidden-readout'); 
+    }
     
     function randomChallenge() {
         slider.value = Math.floor(Math.random() * 4000) * 2;
         isHidden = true;
         display.classList.add('hidden-readout');
         showHint = false;
+        solved = false; 
         feedback.innerText = "";
         userInput.value = "";
         update();

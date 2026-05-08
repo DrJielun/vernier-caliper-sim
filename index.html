@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ITE CE ME Vernier Caliper - Interactive Quiz</title>
+    <title>ITE CE ME Vernier Caliper - Challenge Mode</title>
     <style>
         body {
             font-family: 'Segoe UI', sans-serif;
@@ -28,17 +28,10 @@
         }
         .hidden-readout { background: #adb5bd; color: #adb5bd; border-color: #adb5bd; }
         
-        /* Streak Counter Styling */
         .score-counter {
-            margin-bottom: 15px;
-            font-weight: bold;
-            font-size: 18px;
-            color: #0d6efd;
-            background: #cfe2ff;
-            display: inline-block;
-            padding: 5px 25px;
-            border-radius: 20px;
-            border: 1px solid #0d6efd;
+            margin-bottom: 15px; font-weight: bold; font-size: 18px;
+            color: #0d6efd; background: #cfe2ff; display: inline-block;
+            padding: 5px 20px; border-radius: 20px; border: 1px solid #0d6efd;
         }
 
         .quiz-panel {
@@ -53,7 +46,6 @@
         #feedback { font-weight: bold; font-size: 18px; margin-top: 5px; min-height: 24px; }
         .correct { color: #198754; }
         .wrong { color: #dc3545; }
-        .reveal-warning { color: #fd7e14; }
 
         .controls {
             display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;
@@ -77,16 +69,17 @@
 
 <div class="container">
     <h2>ITE CE ME Vernier Caliper Interactive Quiz</h2>
-
+    
     <div class="score-counter">Current Streak: <span id="streak-count">0</span></div>
     <br>
-    
+
     <div class="readout-box" id="display" onclick="toggleReadout()">0.00 mm</div>
 
     <svg id="svg-canvas" width="900" height="240" viewBox="0 0 900 240">
         <rect x="0" y="60" width="900" height="80" fill="#ced4da" stroke="#495057" />
         <path d="M 100 140 L 100 230 L 60 230 L 60 60 L 100 60" fill="#ced4da" stroke="#495057" />
         <g id="main-scale-marks"></g>
+        
         <g id="slider-group">
             <path d="M 0 140 L 0 230 L 50 230 L 50 210 L 310 210 L 310 140 Z" fill="#adb5bd" stroke="#495057" stroke-width="1" />
             <g id="vernier-scale-marks"></g>
@@ -95,20 +88,20 @@
 
     <div class="controls">
         <div class="slider-wrap">
-            <span class="label">Adjustment Slide</span>
+            <span class="label">Adjustment Slide (Practice Mode)</span>
             <input type="range" id="caliper-slider" min="0" max="10000" value="0" step="2">
         </div>
-        <button class="btn-blue" onclick="randomChallenge()">Random Challenge</button>
-        <button class="btn-secondary" onclick="toggleReadout()">Hide/Show Reading</button>
+        <button class="btn-blue" onclick="randomChallenge()">New Challenge</button>
+        <button class="btn-secondary" onclick="toggleReadout()">Show/Hide Reading</button>
         <button class="btn-hint" id="hint-btn" onclick="toggleHint()">Toggle Alignment Hint</button>
     </div>
 
     <div class="quiz-panel">
-        <span class="label">Practice Mode</span>
+        <span class="label">Input Measurement</span>
         <div class="input-group">
             <input type="number" id="user-answer" step="0.02" placeholder="0.00">
             <span>mm</span>
-            <button class="btn-blue" onclick="checkAnswer()">Submit Answer</button>
+            <button class="btn-blue" onclick="checkAnswer()">Submit</button>
         </div>
         <div id="feedback"></div>
     </div>
@@ -126,12 +119,14 @@
     
     const PX_PER_MM = 6; 
     const OFFSET_X = 100; 
+    let streak = 0;
     let isHidden = false;
     let showHint = false;
-    let streak = 0;
-    let solved = true; // State management for streak logic
+    let challengeActive = false;
+    let solved = true;
+    let isInternalUpdate = false;
+    let lastValue = 0; // Track specifically the slider value to distinguish from hint toggles
 
-    // Build Main Scale
     for (let i = 0; i <= 130; i++) {
         const x = i * PX_PER_MM + OFFSET_X;
         let h = 15;
@@ -142,7 +137,6 @@
         mainScale.innerHTML += `<line x1="${x}" y1="140" x2="${x}" y2="${140-h}" stroke="black" />`;
     }
 
-    // Build Vernier Scale (Resolution 0.02)
     const VERNIER_DIV_WIDTH = (49 / 50) * PX_PER_MM;
     for (let i = 0; i <= 50; i++) {
         const x = i * VERNIER_DIV_WIDTH;
@@ -156,6 +150,17 @@
 
     function update() {
         const val = parseFloat(slider.value) / 100;
+
+        // ONLY Reset streak if the SLIDER actually moved (ignoring hint toggles)
+        if (!isInternalUpdate && challengeActive && !solved && slider.value != lastValue) {
+            streak = 0;
+            streakDisplay.innerText = streak;
+            feedback.innerText = "Streak reset: Tool moved during challenge!";
+            feedback.className = "wrong";
+            challengeActive = false;
+        }
+
+        lastValue = slider.value;
         display.innerText = val.toFixed(2) + " mm";
         const xPos = OFFSET_X + (val * PX_PER_MM);
         sliderGroup.setAttribute('transform', `translate(${xPos}, 0)`);
@@ -164,65 +169,75 @@
             document.getElementById(`v-mark-${i}`).classList.remove('hint-active');
         }
         if(showHint) {
-            const index = Math.round((val % 1.0).toFixed(2) / 0.02);
+            const index = Math.round(((val % 1.0).toFixed(2)) / 0.02);
             const line = document.getElementById(`v-mark-${index}`);
             if(line) line.classList.add('hint-active');
         }
     }
 
     function checkAnswer() {
-        const val = (parseFloat(slider.value) / 100).toFixed(2);
+        const actual = (parseFloat(slider.value) / 100).toFixed(2);
         const userVal = parseFloat(userInput.value).toFixed(2);
 
-        if (userVal === val) {
+        if (userVal === actual) {
             if (!solved) {
                 streak++;
                 solved = true;
+                challengeActive = false;
             }
-            feedback.innerText = "Correct! Well done.";
+            feedback.innerText = "✓ Correct!";
             feedback.className = "correct";
             reveal(); 
         } else {
             streak = 0;
-            feedback.innerText = "Wrong answer. Try again!";
+            feedback.innerText = "✗ Incorrect! Streak reset.";
             feedback.className = "wrong";
         }
         streakDisplay.innerText = streak;
     }
 
-    function toggleHint() { showHint = !showHint; update(); }
-
+    function toggleHint() { 
+        showHint = !showHint; 
+        update(); // Does not reset streak because slider.value == lastValue
+    }
+    
     function toggleReadout() { 
-        // Streak resets if user revealing it manually before solving
-        if (display.classList.contains('hidden-readout') && !solved) {
+        if (isHidden === false && !solved) {
             streak = 0;
             streakDisplay.innerText = streak;
             feedback.innerText = "Streak reset: Answer revealed!";
-            feedback.className = "reveal-warning";
+            feedback.className = "wrong";
         }
         isHidden = !isHidden; 
         display.classList.toggle('hidden-readout', isHidden); 
     }
 
-    function reveal() { 
-        isHidden = false; 
-        display.classList.remove('hidden-readout'); 
-    }
+    function reveal() { isHidden = false; display.classList.remove('hidden-readout'); }
     
     function randomChallenge() {
+        isInternalUpdate = true;
         slider.value = Math.floor(Math.random() * 4000) * 2;
+        lastValue = slider.value;
+        
         isHidden = true;
         display.classList.add('hidden-readout');
         showHint = false;
-        solved = false; 
         feedback.innerText = "";
         userInput.value = "";
+        
+        solved = false;
+        challengeActive = true;
+        
         update();
+        isInternalUpdate = false;
     }
+
+    userInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') checkAnswer();
+    });
 
     slider.addEventListener('input', update);
     update();
 </script>
-
 </body>
 </html>
